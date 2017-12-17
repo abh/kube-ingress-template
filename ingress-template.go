@@ -18,10 +18,13 @@ type hostList []string
 type hostGroups map[string]hostList
 
 type Config struct {
-	Name        string     `json:"name"`
-	Namespace   string     `json:"namespace"`
-	ServiceName string     `json:"service-name"`
-	ServicePort int        `json:"service-port"`
+	Name         string `json:"name"`
+	Namespace    string `json:"namespace"`
+	IngressClass string `json:"ingress-class"`
+
+	ServiceName string `json:"service-name"`
+	ServicePort int    `json:"service-port"`
+
 	Plain       hostList   `json:"plain"`
 	TLSOptional hostGroups `json:"tls-optional"`
 	TLSRequired hostGroups `json:"tls-required"`
@@ -61,59 +64,56 @@ func main() {
 
 	for _, group := range []ingressGroup{TLSOptional, TLSRequired} {
 
-		for _, ingressClass := range []string{"haproxy"} {
+		name := config.Name
+		if group == TLSRequired {
+			name = name + "-tls"
+		}
 
-			log.Printf("IngressClass %s, group %s", ingressClass, group)
+		ingress := v1beta1.Ingress{
+			ObjectMeta: v1.ObjectMeta{
+				Namespace: config.Namespace,
+				Name:      name,
+			},
+		}
+		ingress.Kind = "Ingress"
+		ingress.APIVersion = "extensions/v1beta1"
+		ingress.Kind = "Ingress"
+		if ingress.Annotations == nil {
+			ingress.Annotations = map[string]string{}
+		}
+		if len(config.IngressClass) > 0 {
+			ingress.Annotations["kubernetes.io/ingress.class"] = config.IngressClass
+		}
+		ingress.Annotations["kubernetes.io/tls-acme"] = "true"
 
-			name := config.Name
-			if group == TLSRequired {
-				name = name + "-tls"
+		switch group {
+		case TLSOptional:
+			ingress.Annotations["ingress.kubernetes.io/ssl-redirect"] = "false"
+			err := config.addHosts(&ingress, config.Plain, "")
+			if err != nil {
+				log.Fatalf("%s", err)
 			}
-
-			ingress := v1beta1.Ingress{
-				ObjectMeta: v1.ObjectMeta{
-					Namespace: config.Namespace,
-					Name:      name,
-				},
-			}
-			ingress.Kind = "Ingress"
-			ingress.APIVersion = "extensions/v1beta1"
-			ingress.Kind = "Ingress"
-			if ingress.Annotations == nil {
-				ingress.Annotations = map[string]string{}
-			}
-			ingress.Annotations["kubernetes.io/ingress.class"] = "haproxy"
-			ingress.Annotations["kubernetes.io/tls-acme"] = "true"
-
-			switch group {
-			case TLSOptional:
-				ingress.Annotations["ingress.kubernetes.io/ssl-redirect"] = "false"
-				err := config.addHosts(&ingress, config.Plain, "")
+			for tlsGroup, hostList := range config.TLSOptional {
+				log.Printf("Adding TLS Optional group %s", tlsGroup)
+				err = config.addHosts(&ingress, hostList, tlsGroup)
 				if err != nil {
 					log.Fatalf("%s", err)
 				}
-				for tlsGroup, hostList := range config.TLSOptional {
-					log.Printf("Adding TLS Optional group %s", tlsGroup)
-					err = config.addHosts(&ingress, hostList, tlsGroup)
-					if err != nil {
-						log.Fatalf("%s", err)
-					}
-				}
-
-			case TLSRequired:
-				ingress.Annotations["ingress.kubernetes.io/ssl-redirect"] = "true"
-
-				for tlsGroup, hostList := range config.TLSRequired {
-					log.Printf("Adding TLS Optional group %s", tlsGroup)
-					err = config.addHosts(&ingress, hostList, tlsGroup)
-					if err != nil {
-						log.Fatalf("%s", err)
-					}
-				}
 			}
 
-			ingressList.Items = append(ingressList.Items, ingress)
+		case TLSRequired:
+			ingress.Annotations["ingress.kubernetes.io/ssl-redirect"] = "true"
+
+			for tlsGroup, hostList := range config.TLSRequired {
+				log.Printf("Adding TLS Optional group %s", tlsGroup)
+				err = config.addHosts(&ingress, hostList, tlsGroup)
+				if err != nil {
+					log.Fatalf("%s", err)
+				}
+			}
 		}
+
+		ingressList.Items = append(ingressList.Items, ingress)
 	}
 
 	js, err := json.MarshalIndent(ingressList, "", "  ")
