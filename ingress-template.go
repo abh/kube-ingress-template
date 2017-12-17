@@ -4,6 +4,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -37,9 +38,16 @@ const (
 	TLSRequired
 )
 
-func main() {
+func loadConfig() (*Config, error) {
+	configFile := flag.String("file", "ingress-hosts.json", "Input file")
 
-	b, err := ioutil.ReadFile("ingress-hosts.json")
+	ingressName := flag.String("name", "", "override ingress name")
+	ingressNamespace := flag.String("namespace", "", "override namespace")
+	ingressClass := flag.String("ingress-class", "", "override ingress.class")
+
+	flag.Parse()
+
+	b, err := ioutil.ReadFile(*configFile)
 	if err != nil {
 		log.Fatalf("could not read config: %s", err)
 	}
@@ -48,14 +56,34 @@ func main() {
 	if err != nil {
 		log.Fatalf("could not read config: %s", err)
 	}
-	// log.Printf("config: %+v", config)
+
+	if len(*ingressName) > 0 {
+		config.Name = *ingressName
+	}
+	if len(*ingressNamespace) > 0 {
+		config.Namespace = *ingressNamespace
+	}
+	if len(*ingressClass) > 0 {
+		config.IngressClass = *ingressClass
+	}
 
 	if len(config.ServiceName) == 0 {
-		log.Fatalf("service-name required")
+		return nil, fmt.Errorf("service-name required")
 	}
 
 	if config.ServicePort == 0 {
 		config.ServicePort = 80
+	}
+
+	return &config, nil
+
+}
+
+func main() {
+
+	config, err := loadConfig()
+	if err != nil {
+		log.Fatalf("Error loading config: %s", err)
 	}
 
 	ingressList := v1beta1.IngressList{}
