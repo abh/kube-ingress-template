@@ -175,7 +175,9 @@ func main() {
 			}
 		}
 
-		ingressList.Items = append(ingressList.Items, ingress)
+		if len(ingress.Spec.Rules) > 0 {
+			ingressList.Items = append(ingressList.Items, ingress)
+		}
 	}
 
 	js, err := json.MarshalIndent(ingressList, "", "  ")
