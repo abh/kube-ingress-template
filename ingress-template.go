@@ -14,10 +14,47 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
-type hostList []string
+func (hs *hostService) UnmarshalJSON(b []byte) error {
+	var i interface{}
+	err := json.Unmarshal(b, &i)
+	if err != nil {
+		return err
+	}
+
+	switch v := i.(type) {
+	case string:
+		*hs = hostService{Host: v}
+	case map[string]interface{}:
+		*hs = hostService{}
+
+		if d, ok := v["host"]; ok {
+			hs.Host = d.(string)
+		}
+		if d, ok := v["service-name"]; ok {
+			hs.ServiceName = d.(string)
+		}
+		if d, ok := v["service-port"]; ok {
+			hs.ServicePort = d.(int)
+		}
+
+	default:
+		return fmt.Errorf("unknown type for hostService: %T", i)
+	}
+
+	return nil
+}
+
+type hostService struct {
+	Host        string `json:"host"`
+	ServiceName string `json:"service-name"`
+	ServicePort int    `json:"service-port"`
+}
+
+type hostList []hostService
 
 type hostGroups map[string]hostList
 
+// Config is the data structure the user configures
 type Config struct {
 	Name         string `json:"name"`
 	Namespace    string `json:"namespace"`
@@ -33,9 +70,10 @@ type Config struct {
 
 type ingressGroup uint8
 
+// tlsOptional and tlsRequired are ingressGroups
 const (
-	TLSOptional ingressGroup = iota
-	TLSRequired
+	tlsOptional ingressGroup = iota
+	tlsRequired
 )
 
 func loadConfig() (*Config, error) {
@@ -67,10 +105,6 @@ func loadConfig() (*Config, error) {
 		config.IngressClass = *ingressClass
 	}
 
-	if len(config.ServiceName) == 0 {
-		return nil, fmt.Errorf("service-name required")
-	}
-
 	if config.ServicePort == 0 {
 		config.ServicePort = 80
 	}
@@ -90,10 +124,10 @@ func main() {
 	ingressList.APIVersion = "v1"
 	ingressList.Kind = "List"
 
-	for _, group := range []ingressGroup{TLSOptional, TLSRequired} {
+	for _, group := range []ingressGroup{tlsOptional, tlsRequired} {
 
 		name := config.Name
-		if group == TLSRequired {
+		if group == tlsRequired {
 			name = name + "-tls"
 		}
 
@@ -115,7 +149,7 @@ func main() {
 		ingress.Annotations["kubernetes.io/tls-acme"] = "true"
 
 		switch group {
-		case TLSOptional:
+		case tlsOptional:
 			ingress.Annotations["ingress.kubernetes.io/ssl-redirect"] = "false"
 			err := config.addHosts(&ingress, config.Plain, "")
 			if err != nil {
@@ -129,7 +163,7 @@ func main() {
 				}
 			}
 
-		case TLSRequired:
+		case tlsRequired:
 			ingress.Annotations["ingress.kubernetes.io/ssl-redirect"] = "true"
 
 			for tlsGroup, hostList := range config.TLSRequired {
@@ -162,17 +196,31 @@ func (c *Config) addHosts(ingress *v1beta1.Ingress, hosts hostList, tlsName stri
 
 	for _, h := range hosts {
 		rule := v1beta1.IngressRule{}
-		rule.Host = h
+		rule.Host = h.Host
 		if len(tlsName) > 0 {
-			tls.Hosts = append(tls.Hosts, h)
+			tls.Hosts = append(tls.Hosts, h.Host)
+		}
+
+		serviceName := h.ServiceName
+		if len(serviceName) == 0 {
+			serviceName = c.ServiceName
+		}
+
+		if len(serviceName) == 0 {
+			return fmt.Errorf("service-name required")
+		}
+
+		servicePort := h.ServicePort
+		if servicePort == 0 {
+			servicePort = c.ServicePort
 		}
 
 		rule.HTTP = &v1beta1.HTTPIngressRuleValue{}
 		rule.HTTP.Paths = []v1beta1.HTTPIngressPath{
 			v1beta1.HTTPIngressPath{
 				Backend: v1beta1.IngressBackend{
-					ServiceName: c.ServiceName,
-					ServicePort: intstr.FromInt(c.ServicePort),
+					ServiceName: serviceName,
+					ServicePort: intstr.FromInt(servicePort),
 				},
 				Path: "/",
 			},
