@@ -10,7 +10,7 @@ import (
 	"log"
 
 	"k8s.io/api/extensions/v1beta1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
@@ -59,6 +59,8 @@ type Config struct {
 	Name         string `json:"name"`
 	Namespace    string `json:"namespace"`
 	IngressClass string `json:"ingress-class"`
+
+	Annotations map[string]string `json:"annotations"`
 
 	ServiceName string `json:"service-name"`
 	ServicePort int    `json:"service-port"`
@@ -173,6 +175,10 @@ func main() {
 					log.Fatalf("%s", err)
 				}
 			}
+		}
+
+		for k, v := range config.Annotations {
+			ingress.Annotations[k] = v
 		}
 
 		if len(ingress.Spec.Rules) > 0 {
