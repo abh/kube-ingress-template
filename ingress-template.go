@@ -9,9 +9,8 @@ import (
 	"io/ioutil"
 	"log"
 
-	"k8s.io/api/extensions/v1beta1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
+	netv1 "k8s.io/api/networking/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func (hs *hostService) UnmarshalJSON(b []byte) error {
@@ -34,7 +33,7 @@ func (hs *hostService) UnmarshalJSON(b []byte) error {
 			hs.ServiceName = d.(string)
 		}
 		if d, ok := v["service-port"]; ok {
-			hs.ServicePort = d.(int)
+			hs.ServicePort = d.(int32)
 		}
 
 	default:
@@ -47,7 +46,7 @@ func (hs *hostService) UnmarshalJSON(b []byte) error {
 type hostService struct {
 	Host        string `json:"host"`
 	ServiceName string `json:"service-name"`
-	ServicePort int    `json:"service-port"`
+	ServicePort int32  `json:"service-port"`
 }
 
 type hostList []hostService
@@ -63,7 +62,7 @@ type Config struct {
 	Annotations map[string]string `json:"annotations"`
 
 	ServiceName string `json:"service-name"`
-	ServicePort int    `json:"service-port"`
+	ServicePort int32  `json:"service-port"`
 
 	Plain       hostList   `json:"plain"`
 	TLSOptional hostGroups `json:"tls-optional"`
@@ -122,7 +121,7 @@ func main() {
 		log.Fatalf("Error loading config: %s", err)
 	}
 
-	ingressList := v1beta1.IngressList{}
+	ingressList := netv1.IngressList{}
 	ingressList.APIVersion = "v1"
 	ingressList.Kind = "List"
 
@@ -133,14 +132,14 @@ func main() {
 			name = name + "-tls"
 		}
 
-		ingress := v1beta1.Ingress{
-			ObjectMeta: v1.ObjectMeta{
+		ingress := netv1.Ingress{
+			ObjectMeta: metav1.ObjectMeta{
 				Namespace: config.Namespace,
 				Name:      name,
 			},
 		}
 		ingress.Kind = "Ingress"
-		ingress.APIVersion = "extensions/v1beta1"
+		ingress.APIVersion = "networking.k8s.io/v1"
 		ingress.Kind = "Ingress"
 		if ingress.Annotations == nil {
 			ingress.Annotations = map[string]string{}
@@ -194,16 +193,16 @@ func main() {
 
 }
 
-func (c *Config) addHosts(ingress *v1beta1.Ingress, hosts hostList, tlsName string) error {
+func (c *Config) addHosts(ingress *netv1.Ingress, hosts hostList, tlsName string) error {
 
-	tls := v1beta1.IngressTLS{}
+	tls := netv1.IngressTLS{}
 
 	if len(tlsName) > 0 {
 		tls.SecretName = tlsName + "-tls"
 	}
 
 	for _, h := range hosts {
-		rule := v1beta1.IngressRule{}
+		rule := netv1.IngressRule{}
 		rule.Host = h.Host
 		if len(tlsName) > 0 {
 			tls.Hosts = append(tls.Hosts, h.Host)
@@ -223,14 +222,21 @@ func (c *Config) addHosts(ingress *v1beta1.Ingress, hosts hostList, tlsName stri
 			servicePort = c.ServicePort
 		}
 
-		rule.HTTP = &v1beta1.HTTPIngressRuleValue{}
-		rule.HTTP.Paths = []v1beta1.HTTPIngressPath{
-			v1beta1.HTTPIngressPath{
-				Backend: v1beta1.IngressBackend{
-					ServiceName: serviceName,
-					ServicePort: intstr.FromInt(servicePort),
+		pathTypePrefix := netv1.PathTypePrefix
+
+		rule.HTTP = &netv1.HTTPIngressRuleValue{}
+		rule.HTTP.Paths = []netv1.HTTPIngressPath{
+			netv1.HTTPIngressPath{
+				Path:     "/",
+				PathType: &pathTypePrefix,
+				Backend: netv1.IngressBackend{
+					Service: &netv1.IngressServiceBackend{
+						Name: serviceName,
+						Port: netv1.ServiceBackendPort{
+							Number: servicePort,
+						},
+					},
 				},
-				Path: "/",
 			},
 		}
 		ingress.Spec.Rules = append(ingress.Spec.Rules, rule)
