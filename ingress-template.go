@@ -145,7 +145,8 @@ func main() {
 			ingress.Annotations = map[string]string{}
 		}
 		if len(config.IngressClass) > 0 {
-			ingress.Annotations["kubernetes.io/ingress.class"] = config.IngressClass
+			// ingress.Annotations["kubernetes.io/ingress.class"] = config.IngressClass
+			ingress.Spec.IngressClassName = &config.IngressClass
 		}
 		ingress.Annotations["kubernetes.io/tls-acme"] = "true"
 
