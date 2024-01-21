@@ -3,11 +3,13 @@ package main
 //go:generate stringer -type=ingressGroup
 
 import (
+	"cmp"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"os"
+	"slices"
 
 	netv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -201,6 +203,10 @@ func (c *Config) addHosts(ingress *netv1.Ingress, hosts hostList, tlsName string
 	if len(tlsName) > 0 {
 		tls.SecretName = tlsName + "-tls"
 	}
+
+	slices.SortFunc(hosts, func(a, b hostService) int {
+		return cmp.Compare(a.Host, b.Host)
+	})
 
 	for _, h := range hosts {
 		rule := netv1.IngressRule{}
