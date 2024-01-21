@@ -69,6 +69,7 @@ type Config struct {
 	Plain       hostList   `json:"plain"`
 	TLSOptional hostGroups `json:"tls-optional"`
 	TLSRequired hostGroups `json:"tls-required"`
+	HSTSPreload bool       `json:"hsts-preload"`
 }
 
 type ingressGroup uint8
@@ -155,6 +156,8 @@ func main() {
 		switch group {
 		case tlsOptional:
 			ingress.Annotations["ingress.kubernetes.io/ssl-redirect"] = "false"
+			ingress.Annotations["haproxy-ingress.github.io/hsts"] = "false"
+
 			err := config.addHosts(&ingress, config.Plain, "")
 			if err != nil {
 				log.Fatalf("%s", err)
@@ -169,6 +172,13 @@ func main() {
 
 		case tlsRequired:
 			ingress.Annotations["ingress.kubernetes.io/ssl-redirect"] = "true"
+			ingress.Annotations["haproxy-ingress.github.io/hsts"] = "true"
+
+			if config.HSTSPreload {
+				ingress.Annotations["haproxy-ingress.github.io/hsts-include-subdomains"] = "true"
+				ingress.Annotations["haproxy-ingress.github.io/hsts-preload"] = "true"
+				ingress.Annotations["haproxy-ingress.github.io/hsts-max-age"] = "63072000"
+			}
 
 			for tlsGroup, hostList := range config.TLSRequired {
 				log.Printf("Adding TLS Optional group %s", tlsGroup)
