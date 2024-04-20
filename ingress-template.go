@@ -243,7 +243,7 @@ func (c *Config) addHosts(ingress *netv1.Ingress, hosts hostList, tlsName string
 
 		rule.HTTP = &netv1.HTTPIngressRuleValue{}
 		rule.HTTP.Paths = []netv1.HTTPIngressPath{
-			netv1.HTTPIngressPath{
+			{
 				Path:     "/",
 				PathType: &pathTypePrefix,
 				Backend: netv1.IngressBackend{
