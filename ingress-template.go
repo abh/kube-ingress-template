@@ -66,6 +66,8 @@ type Config struct {
 	ServiceName string `json:"service-name"`
 	ServicePort int32  `json:"service-port"`
 
+	ClusterIssuer string `json:"cluster-issuer"`
+
 	Plain       hostList   `json:"plain"`
 	TLSOptional hostGroups `json:"tls-optional"`
 	TLSRequired hostGroups `json:"tls-required"`
@@ -114,11 +116,9 @@ func loadConfig() (*Config, error) {
 	}
 
 	return &config, nil
-
 }
 
 func main() {
-
 	config, err := loadConfig()
 	if err != nil {
 		log.Fatalf("Error loading config: %s", err)
@@ -151,7 +151,11 @@ func main() {
 			// ingress.Annotations["kubernetes.io/ingress.class"] = config.IngressClass
 			ingress.Spec.IngressClassName = &config.IngressClass
 		}
-		ingress.Annotations["kubernetes.io/tls-acme"] = "true"
+		if len(config.ClusterIssuer) > 0 {
+			ingress.Annotations["cert-manager.io/cluster-issuer"] = config.ClusterIssuer
+		} else {
+			ingress.Annotations["kubernetes.io/tls-acme"] = "true"
+		}
 
 		switch group {
 		case tlsOptional:
@@ -203,11 +207,9 @@ func main() {
 		log.Fatalf("Could not make JSON of ingress list: %s", err)
 	}
 	fmt.Printf("%s\n", js)
-
 }
 
 func (c *Config) addHosts(ingress *netv1.Ingress, hosts hostList, tlsName string) error {
-
 	tls := netv1.IngressTLS{}
 
 	if len(tlsName) > 0 {
